@@ -1,77 +1,95 @@
 # 网页文件管理器 2 · KOReader 快捷方式（kofb.koplugin）
+# Web File Browser 2 · KOReader Shortcut (kofb.koplugin)
 
 > 在 KOReader 里一键**启动 / 关闭** Kindle 上的「网页文件管理器 2」，方便用浏览器无线**传书、管理文件**——而且**全程不用退出 KOReader**。
+>
+> Start or stop Kindle's "Web File Browser 2" from inside KOReader with one tap, then transfer books and manage files wirelessly from any browser — **without ever leaving KOReader**.
+
+> 应用内界面文字按 KOReader 的系统语言显示：**中文系统显示中文，其它（含英文）显示英文**。
+>
+> The in-app UI text follows KOReader's system language: **Chinese on zh locales, English otherwise**.
 
 ---
 
-## 它解决什么 / Why
+## 它解决什么 / What it does
 
-- **方便传输**：启动后，在同一 WiFi 下用电脑 / 手机浏览器打开 `http://<本机IP>`，就能像网盘一样上传、下载、管理 Kindle 里的文件，无需数据线。
-- **不用退出 KOReader**：启动与关闭都在 KOReader 内完成，KOReader 始终在前台。**不会退回 Kindle 桌面，也不会改写屏幕帧缓冲**（避免在 KOReader 界面上花屏）。
-- **不另装一套 filebrowser**：市面上有些插件会在设备上**再运行一份自己的 filebrowser 程序**；本插件**不重复安装任何核心程序**，而是直接复用你已经装好的 KUAL 扩展包「网页文件管理器 2」里的 filebrowser 二进制。
-- **⚠️ 依赖前提（务必先读）**：本插件**只是快捷方式，本身不含核心程序**。使用前必须先在 Kindle 上装好 KUAL 扩展包「网页文件管理器 2」并让核心程序就位（见下方「依赖」）。未满足依赖时点「启动」会明确提示如何补齐，而不是静默失败。
+- **方便传输 / Easy transfer**：启动后，在同一 WiFi 下用电脑 / 手机浏览器打开 `http://<本机IP>`，就能像网盘一样上传、下载、管理 Kindle 里的文件，无需数据线。
+  Easy transfer: once running, open `http://<device-IP>` in any browser on the same Wi-Fi to upload, download and manage files on the Kindle like a network drive — no USB cable needed.
+- **不用退出 KOReader / Stay in KOReader**：启动与关闭都在 KOReader 内完成，KOReader 始终在前台。**不会退回 Kindle 桌面，也不会改写屏幕帧缓冲**（避免在 KOReader 界面上花屏）。
+  Both start and stop happen inside KOReader; KOReader stays in the foreground. It never drops to the Kindle home screen and never writes to the framebuffer (so no flicker over the KOReader UI).
+- **不另装一套 filebrowser / No separate FileBrowser install**：市面上有些插件会在设备上**再运行一份自己的 filebrowser 程序**；本插件**不重复安装任何核心程序**，而是直接复用你已经装好的 KUAL 扩展包「网页文件管理器 2」里的 filebrowser 二进制。
+  Some plugins run their own copy of FileBrowser on the device; this plugin installs nothing extra and simply reuses the `filebrowser` binary already provided by the KUAL extension "Web File Browser 2".
+- **⚠️ 依赖前提（务必先读）/ Dependency required (read first)**：本插件**只是快捷方式，本身不含核心程序**。使用前必须先在 Kindle 上装好 KUAL 扩展包「网页文件管理器 2」并让核心程序就位（见下方「依赖」）。未满足依赖时点「启动」会明确提示如何补齐，而不是静默失败。
+  This plugin is **only a shortcut — it contains no core program**. You must first install the KUAL extension "Web File Browser 2" and have its core program in place (see "Dependencies" below). If the dependency is missing, tapping **Start** tells you exactly how to install it instead of failing silently.
 
 ---
 
-## 依赖 / Prerequisites（前提条件）
+## 依赖 / Dependencies
 
-1. 已越狱，并安装 **KUAL** 启动器。
-2. 已安装 KUAL 扩展包 **「网页文件管理器 2」**（提供核心程序 filebrowser）：
-   - 开源地址：<https://github.com/Gh9518/kindle-filebrowser-optimized>
-3. 已安装 **KOReader**（本插件运行在 KOReader 内部）。
+- 需先安装 KUAL 扩展包 **「网页文件管理器 2」**（提供核心程序 filebrowser）：
+  Install the KUAL extension **"Web File Browser 2"** first (it provides the `filebrowser` core program):
+  - 开源地址 / Source: <https://github.com/Gh9518/kindle-filebrowser-optimized>
 
-> 本插件**不捆绑、不下载、不运行**额外的 filebrowser，所有核心能力都来自上面的 KUAL 扩展包。
+> 能进入 KOReader 的用户，KUAL 启动器与 KOReader 本身通常已就绪；唯一额外要装的就是上面的扩展包，本插件不捆绑、不下载、不运行额外的 filebrowser。
+> If you can already open KOReader, the KUAL launcher and KOReader itself are already in place — the only extra thing to install is the extension above. This plugin does **not** bundle, download, or run an extra FileBrowser.
 
 ---
 
 ## 安装 / Install
 
 1. 在 Release 中下载 `kofb.koplugin.zip`，解压得到 `kofb.koplugin/` 文件夹。
+   Download `kofb.koplugin.zip` from the Releases page and extract it to get the `kofb.koplugin/` folder.
 2. 把 `kofb.koplugin/` 整个复制到 KOReader 的插件目录：
+   Copy the whole `kofb.koplugin/` folder into KOReader's plugins directory:
    - `koreader/plugins/kofb.koplugin/`
 3. 重启 KOReader。
+   Restart KOReader.
 
 ---
 
 ## 使用 / Usage
 
 - KOReader 菜单「**工具**」→「**网页文件管理器 2**」：
-  - **启动**：后台拉起服务（KOReader 保持前台）。菜单项右侧实时显示本机 IP；已运行时再点会直接居中显示当前 IP。
-  - **关闭**：停止服务，仅提示是否成功。
-  - **状态 / IP / 关于**：查看运行状态、本机 IP，以及依赖项目的开源地址。
+  KOReader menu **Tools** → **Web File Browser 2**:
+  - **启动 / Start**：后台拉起服务（KOReader 保持前台）。菜单项右侧实时显示本机 IP；已运行时再点会直接居中显示当前 IP。
+    Launches the service in the background (KOReader stays in front). The device IP shows live on the right of the menu item; tapping again while running shows the current IP centered.
+  - **关闭 / Stop**：停止服务，仅提示是否成功。
+    Stops the service and reports success or failure.
+  - **状态 / IP / 关于 / Status / IP / About**：查看运行状态、本机 IP，以及依赖项目的开源地址。
+    Shows the runtime state, the device IP, and the upstream project links.
 - 也可在「设置 → 手势 / 物理按键 / 快捷面板」把「启动 / 关闭 / 状态·IP」绑定到你喜欢的操作方式（Dispatcher）。
+  You can also bind **Start / Stop / Status·IP** to gestures, hardware keys, or the quick panel via KOReader's Dispatcher.
 
 ---
 
-## 与其它 filebrowser 类插件的区别
+## 与其它 filebrowser 类插件的区别 / How it differs from other FileBrowser plugins
 
-| | 本插件 kofb | 另装一套 filebrowser 的插件 |
+| | 本插件 kofb / This plugin | 另装一套 filebrowser 的插件 / Plugins that install their own |
 |---|---|---|
-| 核心程序 | **复用** KUAL 扩展包的 filebrowser | 各自再装一份 |
-| 退出 KOReader | **不需要** | 视实现而定 |
-| 额外占用 | 仅一个快捷方式 | 多一份程序与空间 |
+| 核心程序 / Core program | **复用** KUAL 扩展包的 filebrowser / **Reuses** the KUAL extension's filebrowser | 各自再装一份 / Each installs its own |
+| 退出 KOReader / Leaving KOReader | **不需要** / **Not required** | 视实现而定 / Depends on the plugin |
+| 额外占用 / Extra footprint | 仅一个快捷方式 / Just a shortcut | 多一份程序与空间 / An extra program and storage |
 
 ---
 
-## 关于页与开源地址
+## 关于页与开源地址 / About page & source links
 
-- KUAL 扩展包「网页文件管理器 2」：<https://github.com/Gh9518/kindle-filebrowser-optimized>
-- 核心程序 filebrowser：<https://github.com/filebrowser/filebrowser>
-- KUAL 启动器：<https://github.com/NiLuJe/KUAL>
-- KOReader：<https://github.com/koreader/koreader>
+- KUAL 扩展包「网页文件管理器 2」/ KUAL extension "Web File Browser 2": <https://github.com/Gh9518/kindle-filebrowser-optimized>
 
 ---
 
 ## 卸载 / Uninstall
 
 删除 `koreader/plugins/kofb.koplugin/` 并重启 KOReader 即可。本插件不改动 KOReader 本体，也不改动 KUAL 插件包。
+Delete `koreader/plugins/kofb.koplugin/` and restart KOReader. This plugin does not modify KOReader itself or the KUAL extension package.
 
 ---
 
 ## 原理简述 / How it works
 
 本插件自带 `fb_bridge.sh` 桥接脚本，只做三件事：**防休眠 / 放行 80 端口 / 后台拉起已有的 filebrowser 二进制**，并复用 KUAL 扩展包里的核心程序与数据库。它**不回桌面、不写 eips、不碰无线开关、不拉起会写屏的守护**，因此与 KOReader 前台运行完全解耦——KUAL 包后续升级也不会破坏本插件。
+The plugin ships a small `fb_bridge.sh` bridge script that only: keeps the screen awake, opens port 80, and launches the existing `filebrowser` binary in the background — reusing the KUAL extension's core program and database. It does **not** return to the home screen, does **not** write to `eips`, does **not** touch the wireless switch, and does **not** start the screen-writing watchdog, so it stays fully decoupled from KOReader's foreground and survives future KUAL extension upgrades.
 
 ---
 
-当前版本：**1.0.5**。
+当前版本 / Current version: **1.0.6**。
