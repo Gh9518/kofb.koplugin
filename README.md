@@ -92,4 +92,4 @@ The plugin ships a small `fb_bridge.sh` bridge script that only: keeps the scree
 
 ---
 
-当前版本 / Current version: **1.0.6**。
+当前版本 / Current version: **1.0.7**。
