@@ -60,6 +60,9 @@
 - 也可在「设置 → 手势 / 物理按键 / 快捷面板」把「启动 / 关闭 / 状态·IP」绑定到你喜欢的操作方式（Dispatcher）。
   You can also bind **Start / Stop / Status·IP** to gestures, hardware keys, or the quick panel via KOReader's Dispatcher.
 
+- **自动关闭（省电 / 不占后台）**：服务启动后，若**连续约 2 分钟无网络**，或**连续约 5 分钟无数据传输**，会自动关闭并居中提示；重新打开即可。看护由 KOReader 前台调度，服务停止即退出，不影响阅读。
+  **Auto-close (power-saving):** once running, if there is **no network for ~2 minutes**, or **no data transfer for ~5 minutes**, the service auto-closes with a centered notice; just open it again to restart. The watcher runs on KOReader's foreground scheduler and exits as soon as the service stops.
+
 ---
 
 ## 与其它 filebrowser 类插件的区别 / How it differs from other FileBrowser plugins
@@ -92,4 +95,4 @@ The plugin ships a small `fb_bridge.sh` bridge script that only: keeps the scree
 
 ---
 
-当前版本 / Current version: **1.0.7**。
+当前版本 / Current version: **1.0.8**。
