@@ -62,12 +62,16 @@
 
 - **自动关闭（省电 / 不占后台）**：服务启动后，若**连续约 2 分钟无网络**，或**连续约 5 分钟无数据传输**，会自动关闭并居中提示；重新打开即可。看护由 KOReader 前台调度，服务停止即退出，不影响阅读。
   **Auto-close (power-saving):** once running, if there is **no network for ~2 minutes**, or **no data transfer for ~5 minutes**, the service auto-closes with a centered notice; just open it again to restart. The watcher runs on KOReader's foreground scheduler and exits as soon as the service stops.
+- **判定精准（v1.1.1 修复）**：「有无数据传输」只按 **filebrowser 进程自身的 IO** 判定，不再看整机网卡流量——因此其他插件（如 Storefront 后台抓目录）或系统联网都不会误触发「有传输」，既保证**无数据 5 分钟 reliably 自动关闭**，也避免屏幕被虚假流量一直点亮锁不住屏。
+  **Precise activity detection (fixed in v1.1.1):** "data transfer" is judged only from the **filebrowser process's own IO**, not total network traffic — so other plugins (e.g. Storefront fetching catalogs) or system networking can no longer be mistaken for activity. This keeps the **5-minute idle auto-close reliable** and prevents the screen from being kept awake by phantom traffic.
 
 - **活动感知常亮 / 可正常息屏省电（v1.1.0）**：启动后**不再全程保持屏幕常亮**。仅在**确实有数据传输时**才短暂置起「屏幕常亮」标记以保证传输不中断；停传约 **1 分钟**即自动释放，设备随即可以正常息屏休眠、省电。屏幕唤醒平时完全交给 KOReader 自己管理，插件不抢占。
   **Activity-based wake / normal sleep & power saving (v1.1.0):** the screen is **no longer kept awake for the whole session**. The "keep awake" flag is set **only while data is actually transferring**, so the transfer is never interrupted; about **1 minute** after transfer stops it is released and the device can sleep normally to save power. Screen waking is otherwise left entirely to KOReader — the plugin does not grab that global flag.
 
 - **锁屏自动停 / 解锁自动恢复（修复锁屏卡死）**：锁屏（系统挂起）前自动关闭服务并兜底释放「屏幕常亮」标记——该标记若在挂起时仍被持有会顶住系统挂起流程、造成反复震荡直至卡死；同时释放 filebrowser 占用的内存。解锁后若锁屏前服务在运行会自动重新拉起，传输无缝继续。
   **Auto-stop on lock / auto-resume on unlock (fixes lock-screen freeze):** before the system suspends, the service is stopped and the "keep awake" flag cleared as a safeguard — holding that flag during suspend stalls the suspend flow and freezes the device. The filebrowser process (and its memory) is freed while asleep. If it was running before you locked, it restarts automatically on unlock.
+- **震荡防抖（v1.1.1）**：若设备出现 suspend/resume 快速反复（日志中可见数秒内多次挂起/唤醒），插件用代际令牌让挂起前排队的「解锁重启」回调作废，只有**稳定解锁后**才恢复服务——震荡窗口内不再反复启停、反复 fork 进程，降低低内存设备锁屏卡顿的概率。
+  **Oscillation debounce (v1.1.1):** if the device rapidly oscillates suspend/resume (visible as repeated suspend/wake within seconds in logs), a generation token invalidates the queued "restart on unlock" callbacks from before suspension, restoring the service only after a **stable unlock** — no repeated start/stop or process forking during the oscillation window, reducing lock-screen stutter on low-memory devices.
 
 ---
 
@@ -101,4 +105,4 @@ The plugin ships a small `fb_bridge.sh` bridge script that only: opens port 80, 
 
 ---
 
-当前版本 / Current version: **1.1.0**。
+当前版本 / Current version: **1.1.1**。
