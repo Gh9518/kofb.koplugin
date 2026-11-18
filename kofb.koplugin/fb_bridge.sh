@@ -1,6 +1,7 @@
 #!/bin/sh
 # fb_bridge.sh — KOReader 快捷方式插件与「网页文件管理器 2」KUAL 包之间的桥接
-# 用法: sh fb_bridge.sh start | stop | status | ip | dir | quiet
+# 用法: sh fb_bridge.sh start | stop | status | ip | dir | bytes | probe | quiet | wake | sleep
+#   wake/sleep：活动感知常亮的开/关（仅传输期间置 1，空闲即释放，允许息屏省电）
 #
 # 【为什么不直接调用 KUAL 包的 start.sh / stop.sh】
 # KOReader 在前台时，那两个脚本有三个天然冲突：
@@ -47,6 +48,7 @@ if [ -z "$DIR" ]; then
         ip)     echo "FB_ERR"; exit 1 ;;
         status) echo "off";    exit 1 ;;
         dir)    echo "";       exit 1 ;;
+        probe)  echo "off FB_ERR 0"; exit 1 ;;
         *)      echo "FB_ERR: extension not found"; exit 1 ;;
     esac
 fi
@@ -68,6 +70,18 @@ get_ip() {
         [ -n "$addr" ] && break
     done
     if [ -z "$addr" ]; then echo "FB_ERR"; else echo "$addr"; fi
+}
+
+# 接口收发包字节总数（wlan0/eth0/mlan0/tiwlan0 之和），用于「无数据传输」判定。
+# /proc/net/dev 第 2 列为 RX bytes、第 10 列为 TX bytes；解析后累加。
+# 无任何接口时输出 0（Lua 侧据此认为「无流量」）。
+get_bytes() {
+    tot=0
+    for ifc in wlan0 eth0 mlan0 tiwlan0; do
+        b=$(awk -v i="$ifc" '$0 ~ "^[ \t]*" i ":" { print $2 + $10 }' /proc/net/dev 2>/dev/null)
+        [ -n "$b" ] && tot=$(( tot + b ))
+    done
+    echo "$tot"
 }
 
 # 只杀本服务进程：优先 pid 文件，再按命令行精确兜底。
@@ -101,8 +115,11 @@ start)
     fi
     [ -x ./filebrowser ] || { echo "FB_ERR: no core (run KUAL once)"; exit 1; }
 
-    # 防休眠：Kindle 休眠会关 WiFi，服务期间保持唤醒（best-effort，不改动无线开关）
-    lipc-set-prop -i com.lab126.powerd preventScreenSaver 1 2>/dev/null
+    # 【v1.1.0 息屏/省电修复】不再设置 preventScreenSaver 屏幕常亮：
+    # Kindle 上「息屏 = 挂起 = 关 WiFi」。旧版在这里置 1 是想防休眠断网，但它是全局标记，
+    # 会在整个服务期间顶住 KOReader 的挂起流程——自动息屏/手动锁屏都失效、白耗电，
+    # 严重时造成 suspend/resume 震荡卡死。KOReader 前台本就自行管理屏幕唤醒（阅读时保持、
+    # 挂起时释放），插件无需也不应抢占。保传输改由上层 onSuspend「挂起前先停服务」保证。
 
     # 放行 80 入站（部分固件默认拦截）；只在规则不存在时插入，避免重复堆积
     if ! iptables -L INPUT -n 2>/dev/null | grep -q 'dpt:80'; then
@@ -140,6 +157,9 @@ start)
 stop)
     kill_service
     quiet_guard
+    # 兜底清 0：兼容 KUAL 入口或旧版本遗留的常亮标记，确保关闭后设备能正常息屏省电。
+    # 本插件 start 已不再置 1，故这里通常无标记可清；仅在「先在 KUAL 启动、再从本插件关闭」
+    # 等混合场景下生效。恒为 best-effort，不改动无线开关。
     lipc-set-prop -i com.lab126.powerd preventScreenSaver 0 2>/dev/null
     echo stopped
     ;;
@@ -152,6 +172,18 @@ ip)
     get_ip
     ;;
 
+bytes)
+    get_bytes
+    ;;
+
+probe)
+    # 单次调用取回三态「<status> <ip> <bytes>」，供 Lua 侧一次 fork 拿全，
+    # 显著减少轮询时的进程创建（低内存设备上频繁 fork sh 是不小的开销）
+    st="off"
+    listening && st="on"
+    printf '%s %s %s\n' "$st" "$(get_ip)" "$(get_bytes)"
+    ;;
+
 dir)
     echo "$DIR"
     ;;
@@ -161,8 +193,19 @@ quiet)
     echo quieted
     ;;
 
+# 【v1.1.0 活动感知常亮】只在「确实有数据传输」期间短暂保持唤醒以保传输，
+# 空闲约 1 分钟后由上层释放。替代旧版「启动即常亮、直到关闭」的粗暴做法。
+wake)
+    lipc-set-prop -i com.lab126.powerd preventScreenSaver 1 2>/dev/null
+    echo awake
+    ;;
+sleep)
+    lipc-set-prop -i com.lab126.powerd preventScreenSaver 0 2>/dev/null
+    echo asleep
+    ;;
+
 *)
-    echo "usage: fb_bridge.sh start|stop|status|ip|dir|quiet"
+    echo "usage: fb_bridge.sh start|stop|status|ip|dir|bytes|probe|quiet|wake|sleep"
     exit 1
     ;;
 esac
