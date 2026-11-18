@@ -63,8 +63,11 @@
 - **自动关闭（省电 / 不占后台）**：服务启动后，若**连续约 2 分钟无网络**，或**连续约 5 分钟无数据传输**，会自动关闭并居中提示；重新打开即可。看护由 KOReader 前台调度，服务停止即退出，不影响阅读。
   **Auto-close (power-saving):** once running, if there is **no network for ~2 minutes**, or **no data transfer for ~5 minutes**, the service auto-closes with a centered notice; just open it again to restart. The watcher runs on KOReader's foreground scheduler and exits as soon as the service stops.
 
-- **锁屏自动停 / 解锁自动恢复（修复锁屏卡死）**：锁屏（系统挂起）前自动关闭服务并释放「屏幕常亮」标记——该标记若在挂起时仍被持有会顶住系统挂起流程、造成反复震荡直至卡死；同时释放 filebrowser 占用的内存。解锁后若锁屏前服务在运行会自动重新拉起，传输无缝继续。
-  **Auto-stop on lock / auto-resume on unlock (fixes lock-screen freeze):** before the system suspends, the service is stopped and the "keep awake" flag released — holding that flag during suspend stalls the suspend flow and freezes the device. The filebrowser process (and its memory) is freed while asleep. If it was running before you locked, it restarts automatically on unlock.
+- **活动感知常亮 / 可正常息屏省电（v1.1.0）**：启动后**不再全程保持屏幕常亮**。仅在**确实有数据传输时**才短暂置起「屏幕常亮」标记以保证传输不中断；停传约 **1 分钟**即自动释放，设备随即可以正常息屏休眠、省电。屏幕唤醒平时完全交给 KOReader 自己管理，插件不抢占。
+  **Activity-based wake / normal sleep & power saving (v1.1.0):** the screen is **no longer kept awake for the whole session**. The "keep awake" flag is set **only while data is actually transferring**, so the transfer is never interrupted; about **1 minute** after transfer stops it is released and the device can sleep normally to save power. Screen waking is otherwise left entirely to KOReader — the plugin does not grab that global flag.
+
+- **锁屏自动停 / 解锁自动恢复（修复锁屏卡死）**：锁屏（系统挂起）前自动关闭服务并兜底释放「屏幕常亮」标记——该标记若在挂起时仍被持有会顶住系统挂起流程、造成反复震荡直至卡死；同时释放 filebrowser 占用的内存。解锁后若锁屏前服务在运行会自动重新拉起，传输无缝继续。
+  **Auto-stop on lock / auto-resume on unlock (fixes lock-screen freeze):** before the system suspends, the service is stopped and the "keep awake" flag cleared as a safeguard — holding that flag during suspend stalls the suspend flow and freezes the device. The filebrowser process (and its memory) is freed while asleep. If it was running before you locked, it restarts automatically on unlock.
 
 ---
 
@@ -93,9 +96,9 @@ Delete `koreader/plugins/kofb.koplugin/` and restart KOReader. This plugin does 
 
 ## 原理简述 / How it works
 
-本插件自带 `fb_bridge.sh` 桥接脚本，只做三件事：**防休眠 / 放行 80 端口 / 后台拉起已有的 filebrowser 二进制**，并复用 KUAL 扩展包里的核心程序与数据库。它**不回桌面、不写 eips、不碰无线开关、不拉起会写屏的守护**，因此与 KOReader 前台运行完全解耦——KUAL 包后续升级也不会破坏本插件。
-The plugin ships a small `fb_bridge.sh` bridge script that only: keeps the screen awake, opens port 80, and launches the existing `filebrowser` binary in the background — reusing the KUAL extension's core program and database. It does **not** return to the home screen, does **not** write to `eips`, does **not** touch the wireless switch, and does **not** start the screen-writing watchdog, so it stays fully decoupled from KOReader's foreground and survives future KUAL extension upgrades.
+本插件自带 `fb_bridge.sh` 桥接脚本，只做三件事：**放行 80 端口 / 后台拉起已有的 filebrowser 二进制 / 按活动情况短暂置放屏幕常亮标记**，并复用 KUAL 扩展包里的核心程序与数据库。它**不回桌面、不写 eips、不碰无线开关、不拉起会写屏的守护**，因此与 KOReader 前台运行完全解耦——KUAL 包后续升级也不会破坏本插件。屏幕唤醒不再全程抢占：仅传输期间短暂置起、停传约 1 分钟即释放，让设备能正常息屏省电。
+The plugin ships a small `fb_bridge.sh` bridge script that only: opens port 80, launches the existing `filebrowser` binary in the background, and toggles the screen-awake flag based on transfer activity — reusing the KUAL extension's core program and database. It does **not** return to the home screen, does **not** write to `eips`, does **not** touch the wireless switch, and does **not** start the screen-writing watchdog, so it stays fully decoupled from KOReader's foreground and survives future KUAL extension upgrades. Screen waking is no longer grabbed for the whole session: it is set only during transfers and released about 1 minute after transfer stops, letting the device sleep normally to save power.
 
 ---
 
-当前版本 / Current version: **1.0.9**。
+当前版本 / Current version: **1.1.0**。
