@@ -105,4 +105,25 @@ The plugin ships a small `fb_bridge.sh` bridge script that only: opens port 80, 
 
 ---
 
-当前版本 / Current version: **1.1.1**。
+## 更新日志 / Changelog
+
+- **v1.1.2**：为关键事件（加载 / 启停 / 自动关闭 / 挂起恢复 / 网络恢复）增加结构化日志，统一 `kofb:` 前缀，可在 KOReader 的 `crash.log` 中 `grep kofb:` 快速定位插件行为；仅在离散事件记录，轮询热路径不打日志，不增加低内存设备负担。
+  **v1.1.2:** added structured logs for key events (load / start-stop / auto-close / suspend-resume / network recovery), all prefixed `kofb:` so they can be grepped from KOReader's `crash.log`; discrete events only — the polling hot path stays silent, no extra cost on low-memory devices.
+- **v1.1.1**：修复"长时间无传输不自动关闭"与"锁不住屏"——根因是活动判定用了整机网卡流量、被其它程序的联网污染；改为只统计 filebrowser 进程自身 IO。挂起/恢复加入代际令牌防抖，避免 suspend/resume 震荡窗口内反复启停。
+  **v1.1.1:** fixed "no idle auto-close" and "screen won't lock" — both caused by judging activity from total NIC traffic polluted by other apps; now uses the filebrowser process's own IO. Added generation-token debounce across suspend/resume to avoid repeated start-stop during oscillation.
+- **v1.1.0**：移除"启动即常亮"，改为活动感知常亮（仅在传输时短暂保持唤醒，停传约 1 分钟即释放），设备可正常息屏省电。
+  **v1.1.0:** replaced always-on wake with activity-based wake (awake only during transfer, released ~1 min after), so the device can sleep normally.
+- **v1.0.9**：修复锁屏卡死——挂起前自动停服务并释放常亮标记，解锁后自动恢复；轮询合并为单次 `probe`，降低进程开销。
+  **v1.0.9:** fixed lock-screen freeze — stop service and release wake flag before suspend, auto-restore on unlock; merged polling into a single `probe` to cut process overhead.
+- **v1.0.8**：新增自动关闭看护（无网络约 2 分钟 / 无传输约 5 分钟）。
+  **v1.0.8:** added auto-close watchdog (~2 min offline / ~5 min idle).
+- **v1.0.7**：新增网络恢复自动提示——离线后连上 WiFi 自动居中弹出本机 IP。
+  **v1.0.7:** added network-recovery notice — auto-popup the IP when Wi-Fi returns after being offline.
+- **v1.0.6**：界面文案中英双语，按 KOReader 系统语言自动切换。
+  **v1.0.6:** bilingual UI text that follows KOReader's system language.
+- **v1.0.5**：启动/关闭/状态提示统一居中并精简，启动成功提示去掉冗余端口。
+  **v1.0.5:** centered and simplified start/stop/status notices; dropped the redundant port from the success message.
+
+---
+
+当前版本 / Current version: **1.1.2**。
