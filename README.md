@@ -63,6 +63,9 @@
 - **自动关闭（省电 / 不占后台）**：服务启动后，若**连续约 2 分钟无网络**，或**连续约 5 分钟无数据传输**，会自动关闭并居中提示；重新打开即可。看护由 KOReader 前台调度，服务停止即退出，不影响阅读。
   **Auto-close (power-saving):** once running, if there is **no network for ~2 minutes**, or **no data transfer for ~5 minutes**, the service auto-closes with a centered notice; just open it again to restart. The watcher runs on KOReader's foreground scheduler and exits as soon as the service stops.
 
+- **锁屏自动停 / 解锁自动恢复（修复锁屏卡死）**：锁屏（系统挂起）前自动关闭服务并释放「屏幕常亮」标记——该标记若在挂起时仍被持有会顶住系统挂起流程、造成反复震荡直至卡死；同时释放 filebrowser 占用的内存。解锁后若锁屏前服务在运行会自动重新拉起，传输无缝继续。
+  **Auto-stop on lock / auto-resume on unlock (fixes lock-screen freeze):** before the system suspends, the service is stopped and the "keep awake" flag released — holding that flag during suspend stalls the suspend flow and freezes the device. The filebrowser process (and its memory) is freed while asleep. If it was running before you locked, it restarts automatically on unlock.
+
 ---
 
 ## 与其它 filebrowser 类插件的区别 / How it differs from other FileBrowser plugins
@@ -95,4 +98,4 @@ The plugin ships a small `fb_bridge.sh` bridge script that only: keeps the scree
 
 ---
 
-当前版本 / Current version: **1.0.8**。
+当前版本 / Current version: **1.0.9**。
