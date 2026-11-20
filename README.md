@@ -62,8 +62,8 @@
 
 - **自动关闭（省电 / 不占后台）**：服务启动后，若**连续约 2 分钟无网络**，或**连续约 5 分钟无数据传输**，会自动关闭并居中提示；重新打开即可。看护由 KOReader 前台调度，服务停止即退出，不影响阅读。
   **Auto-close (power-saving):** once running, if there is **no network for ~2 minutes**, or **no data transfer for ~5 minutes**, the service auto-closes with a centered notice; just open it again to restart. The watcher runs on KOReader's foreground scheduler and exits as soon as the service stops.
-- **判定精准（v1.1.1 修复）**：「有无数据传输」只按 **filebrowser 进程自身的 IO** 判定，不再看整机网卡流量——因此其他插件（如 Storefront 后台抓目录）或系统联网都不会误触发「有传输」，既保证**无数据 5 分钟 reliably 自动关闭**，也避免屏幕被虚假流量一直点亮锁不住屏。
-  **Precise activity detection (fixed in v1.1.1):** "data transfer" is judged only from the **filebrowser process's own IO**, not total network traffic — so other plugins (e.g. Storefront fetching catalogs) or system networking can no longer be mistaken for activity. This keeps the **5-minute idle auto-close reliable** and prevents the screen from being kept awake by phantom traffic.
+- **判定精准（v1.1.3 修复）**：「有无数据传输」按 **iptables 中本服务 80 端口的双向累计字节**（内核层）判定——既只统计访问本服务的流量（其他插件如 Storefront 后台抓目录、系统联网都不会误触发「有传输」），又能如实统计 filebrowser 走 **sendfile 零拷贝**的下载/上传。双向统计 **入站 dpt:80（请求/上传）+ 出站 spt:80（下载响应）**，杜绝「正在下载却因只看入站/进程 IO 被判无传输、5 分钟误关」。因此**无数据 5 分钟 reliably 自动关闭**，传输全程不被误断，屏幕也不会被虚假流量一直点亮锁不住屏。
+  **Precise activity detection (fixed in v1.1.3):** "data transfer" is judged from the **kernel-level iptables byte counters on this service's port 80** — only traffic to/from this service counts (other plugins like Storefront fetching catalogs, or system networking, can't be mistaken for activity), while downloads/uploads via filebrowser's **sendfile zero-copy** are still counted correctly. Both directions are tracked — **inbound dpt:80 (requests/uploads) + outbound spt:80 (download responses)** — so an in-progress download is never misjudged as idle and closed after 5 minutes. This keeps the **5-minute idle auto-close reliable** without ever cutting off a real transfer.
 
 - **活动感知常亮 / 可正常息屏省电（v1.1.0）**：启动后**不再全程保持屏幕常亮**。仅在**确实有数据传输时**才短暂置起「屏幕常亮」标记以保证传输不中断；停传约 **1 分钟**即自动释放，设备随即可以正常息屏休眠、省电。屏幕唤醒平时完全交给 KOReader 自己管理，插件不抢占。
   **Activity-based wake / normal sleep & power saving (v1.1.0):** the screen is **no longer kept awake for the whole session**. The "keep awake" flag is set **only while data is actually transferring**, so the transfer is never interrupted; about **1 minute** after transfer stops it is released and the device can sleep normally to save power. Screen waking is otherwise left entirely to KOReader — the plugin does not grab that global flag.
@@ -107,6 +107,8 @@ The plugin ships a small `fb_bridge.sh` bridge script that only: opens port 80, 
 
 ## 更新日志 / Changelog
 
+- **v1.1.3**：修复「正在传输却被判无传输、5 分钟误关」——v1.1.1 改用的进程 IO 对 Go HTTP 服务的 `sendfile` 零拷贝无效（下载/上传不经用户态 read/write），判定源改回内核层 **iptables 80 端口双向累计字节**：只统计访问本服务的流量（剔除其它程序联网），sendfile 同样计数；并新增出站 `spt:80`，使纯下载（出站流量）不再被漏判。两端（KOReader 快捷方式 + KUAL 包）判定源同步修复，一次 `iptables -L` 取双向、仅 1 次 fork。
+  **v1.1.3:** fixed "real transfer misjudged as idle and closed after 5 min" — the process IO used since v1.1.1 is blind to Go's `sendfile` zero-copy (downloads/uploads bypass userspace read/write). Detection now uses **kernel-level iptables bidirectional byte counters on port 80**: only this service's traffic counts (other apps excluded), sendfile is counted, and an outbound `spt:80` counter was added so download-only traffic is no longer missed. Both sides (KOReader shortcut + KUAL package) fixed in sync; one `iptables -L` reads both directions, single fork.
 - **v1.1.2**：为关键事件（加载 / 启停 / 自动关闭 / 挂起恢复 / 网络恢复）增加结构化日志，统一 `kofb:` 前缀，可在 KOReader 的 `crash.log` 中 `grep kofb:` 快速定位插件行为；仅在离散事件记录，轮询热路径不打日志，不增加低内存设备负担。
   **v1.1.2:** added structured logs for key events (load / start-stop / auto-close / suspend-resume / network recovery), all prefixed `kofb:` so they can be grepped from KOReader's `crash.log`; discrete events only — the polling hot path stays silent, no extra cost on low-memory devices.
 - **v1.1.1**：修复"长时间无传输不自动关闭"与"锁不住屏"——根因是活动判定用了整机网卡流量、被其它程序的联网污染；改为只统计 filebrowser 进程自身 IO。挂起/恢复加入代际令牌防抖，避免 suspend/resume 震荡窗口内反复启停。
@@ -126,4 +128,4 @@ The plugin ships a small `fb_bridge.sh` bridge script that only: opens port 80, 
 
 ---
 
-当前版本 / Current version: **1.1.2**。
+当前版本 / Current version: **1.1.3**。
