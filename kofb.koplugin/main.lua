@@ -1,5 +1,5 @@
 --[[--
-kofb.koplugin — 「网页文件管理器 2」的 KOReader 快捷方式（v1.1.4）
+kofb.koplugin — 「网页文件管理器 2」的 KOReader 快捷方式（v1.1.5）
 
 UI 文案按系统语言显示：系统为简体中文时显示中文，其它（含英文）显示英文。
 判定依据为 KOReader 启动时已加载的 locale（require("gettext").current_lang，
@@ -28,6 +28,11 @@ UI 文案按系统语言显示：系统为简体中文时显示中文，其它�
     onSuspend 在 suspend 电源关键路径里同步 io.popen fork shell + 对 powerd 的 preventScreenSaver
     做 LIPC 写，与系统息屏竞争而挂死。改为 onSuspend 只改内存状态：零 fork、零 LIPC、零阻塞；
     状态复查 / 常亮兜底 / 看护恢复全部推迟到 onResume（电源路径之外）异步执行。
+  * v1.1.5 异步探针（本次）：crash.log 的 aat 心跳（每 2s）显示一次卡屏时事件循环停摆，
+    卡点紧邻看护恢复，根因是看护/网络监听每轮在主线程同步 io.popen("sh fb_bridge.sh probe")，
+    该命令含 iptables 全表遍历 + ifconfig×4 + ps，低内存 PW4 上、叠加 Storefront 后台联网时
+    可长时间阻塞 UI 线程。改为后台 spawn 探针写缓存、主线程只读缓存文件（零 fork、零阻塞），
+    彻底消除卡屏；菜单/启动等用户主动触发的即时查询仍用同步 probe，交互不受影响。
   * IP 用 KOReader 自己的菜单右侧值 / 弹窗显示，天然避开帧缓冲冲突。
   * 桥接脚本只依赖 Kindle 系统接口与现有包里的 filebrowser 二进制 / filebrowser.db，
     不 source lib.sh、不调用 start.sh，因此 KUAL 插件包后续升级不会破坏本插件。
@@ -66,7 +71,7 @@ end
 local ok_tv, tv_module = pcall(require, "ui/widget/textviewer")
 local TextViewer = (ok_tv and type(tv_module) == "table") and tv_module or nil
 
-local PLUGIN_VERSION = "1.1.4"
+local PLUGIN_VERSION = "1.1.5"
 
 -- 依赖项目开源地址：KUAL 扩展包「网页文件管理器 2」（提供核心程序）
 local URL_KUAL_EXT = "https://github.com/Gh9518/kindle-filebrowser-optimized"
@@ -111,6 +116,10 @@ end
 
 local BRIDGE = plugin_dir() .. "fb_bridge.sh"
 
+-- v1.1.5 异步探针缓存：后台 spawn("probe_file") 把「状态 IP 字节」原子写入此文件，
+-- 主线程只读这个小文本文件（io.open + 一次 read），完全不再同步 fork 重量级 probe。
+local PROBE_CACHE = "/tmp/kofb_probe.cache"
+
 local function shquote(s)
     return "'" .. s:gsub("'", "'\\''") .. "'"
 end
@@ -131,10 +140,34 @@ local function spawn(args)
 end
 
 -- 一次 fork 取回「<status> <ip> <bytes>」三态（桥接脚本 probe 子命令）。
--- 轮询看护每轮只 fork 一个子进程（旧实现要 fork 3 个），降低低内存设备的进程创建开销。
+-- 用于菜单 mandatory_func、启动/状态查看等「用户主动、低频」的即时查询：
+-- 这些调用需要与界面同步拿到最新值，且频率低，同步 fork 不会阻塞热路径。
 -- 返回 st, ip, bytes 三个字符串；解析失败时 st 为 nil。
 local function probe()
     return capture("probe"):match("^(%S+) (%S+) (%S+)")
+end
+
+-- v1.1.5 异步探针（卡屏根治）——
+-- 看护 / 网络恢复监听是「每 10 秒 / 每 3 秒」的高频热路径。旧版每轮在主线程同步
+-- io.popen("sh fb_bridge.sh probe")，而 probe 内含 iptables 全表遍历 + ifconfig×4 + ps，
+-- 在低内存 PW4 上、叠加 Storefront 后台联网时可长时间阻塞 KOReader 的 UI 线程 ——
+-- crash.log 中 aat 心跳（每 2s）戛然而止、恰好停在看护恢复之后，正是此因。
+-- 改造：probe_async() 后台 spawn 探针把结果原子写入缓存文件（立即返回、不等待）；
+-- probe_cached() 只读缓存（一次 io.open + read，零 fork、零阻塞）。
+-- 缓存不存在或残缺（首轮后台尚未完成）时回退一次同步 probe，仅此一次，不影响稳态。
+local function probe_async()
+    os.execute("sh " .. shquote(BRIDGE) .. " probe_file " .. shquote(PROBE_CACHE)
+               .. " >/dev/null 2>&1 &")
+end
+
+local function probe_cached()
+    local f = io.open(PROBE_CACHE, "r")
+    if not f then return probe() end
+    local line = f:read("*l")
+    f:close()
+    local parsed = line and line:match("^(%S+) (%S+) (%S+)")
+    if not parsed then return probe() end
+    return parsed
 end
 
 -- IP 形如 192.168.1.5 才算「已联网」；FB_ERR / 空 / 其它一律视为未联网
@@ -293,7 +326,9 @@ end
 function KOFileBrowser:_watchNetwork(n, gen)
     n = n or 0
     if not self._net_watch or gen ~= self._net_gen then return end
-    local st, ip = probe()
+    -- v1.1.5 同样改读异步缓存并后台刷新，避免 3 秒一次同步 fork 阻塞 UI
+    local st, ip = probe_cached()
+    probe_async()
     if st ~= "on" then
         -- 服务已被关闭：停止监听
         self._net_watch = false
@@ -346,7 +381,10 @@ end
 function KOFileBrowser:_watchdogTick(gen)
     -- 已被新一代看护取代 / 已停止：本轮作废
     if not self._wd or gen ~= self._wd_gen then return end
-    local st, ip, bytes = probe()
+    -- v1.1.5 热路径零阻塞：只读上一轮后台探针写好的缓存（零 fork），
+    -- 并立刻后台 spawn 下一轮刷新，主线程绝不等待 iptables/ifconfig/ps。
+    local st, ip, bytes = probe_cached()
+    probe_async()
     if st ~= "on" then
         -- 服务已停：看护结束
         self._wd = false
