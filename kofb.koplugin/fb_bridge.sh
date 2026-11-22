@@ -227,6 +227,20 @@ probe)
     printf '%s %s %s\n' "$st" "$(get_ip)" "$(get_bytes)"
     ;;
 
+probe_file)
+    # v1.1.5 异步探针：与 probe 输出完全相同的三态，但把结果原子写入缓存文件。
+    # 供 KOReader 主线程「后台 spawn、只读缓存」使用——把 iptables 全表 + ifconfig×4
+    # 这类重型操作挪到独立后台进程，主线程每轮只读一个文本文件（零 fork、零阻塞），
+    # 根治低内存设备上同步 io.popen 等待探针而卡住 UI 的问题。
+    # 参数：$2 = 缓存文件路径；先写 .tmp 再 mv 原子替换，读侧绝不读到半行。
+    CACHE="${2:-/tmp/kofb_probe.cache}"
+    st="off"
+    listening && st="on"
+    line=$(printf '%s %s %s' "$st" "$(get_ip)" "$(get_bytes)")
+    printf '%s\n' "$line" > "$CACHE.tmp" 2>/dev/null && mv -f "$CACHE.tmp" "$CACHE" 2>/dev/null
+    printf '%s\n' "$line"
+    ;;
+
 dir)
     echo "$DIR"
     ;;
