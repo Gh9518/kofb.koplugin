@@ -68,8 +68,8 @@
 - **活动感知常亮 / 可正常息屏省电（v1.1.0）**：启动后**不再全程保持屏幕常亮**。仅在**确实有数据传输时**才短暂置起「屏幕常亮」标记以保证传输不中断；停传约 **1 分钟**即自动释放，设备随即可以正常息屏休眠、省电。屏幕唤醒平时完全交给 KOReader 自己管理，插件不抢占。
   **Activity-based wake / normal sleep & power saving (v1.1.0):** the screen is **no longer kept awake for the whole session**. The "keep awake" flag is set **only while data is actually transferring**, so the transfer is never interrupted; about **1 minute** after transfer stops it is released and the device can sleep normally to save power. Screen waking is otherwise left entirely to KOReader — the plugin does not grab that global flag.
 
-- **锁屏自动停 / 解锁自动恢复（修复锁屏卡死）**：锁屏（系统挂起）前自动关闭服务并兜底释放「屏幕常亮」标记——该标记若在挂起时仍被持有会顶住系统挂起流程、造成反复震荡直至卡死；同时释放 filebrowser 占用的内存。解锁后若锁屏前服务在运行会自动重新拉起，传输无缝继续。
-  **Auto-stop on lock / auto-resume on unlock (fixes lock-screen freeze):** before the system suspends, the service is stopped and the "keep awake" flag cleared as a safeguard — holding that flag during suspend stalls the suspend flow and freezes the device. The filebrowser process (and its memory) is freed while asleep. If it was running before you locked, it restarts automatically on unlock.
+- **锁屏零阻塞 / 解锁自动恢复（v1.1.4 息屏卡死根治）**：锁屏（系统挂起）时插件**只改内存状态，绝不 fork 子进程、绝不写 powerd 的 preventScreenSaver**——因为 KOReader 在广播 Suspend 后会立即让系统进入挂起，此刻同步 `io.popen` fork shell 或对 powerd 做 LIPC 写会与系统息屏流程竞争、卡死在挂起中途，只能按电源键硬重启（正是 crash.log 中「服务运行中息屏、日志无退出记录」两次卡死的根因）。服务进程在挂起冻结期间不耗电，解锁稳定后才在电源关键路径之外复查状态、恢复看护与清理常亮。
+  **Zero-block on lock / auto-resume on unlock (v1.1.4 freeze fix):** on suspend, the plugin **only updates in-memory state — it never forks a subprocess and never writes powerd's preventScreenSaver**. KOReader suspends the system right after broadcasting `Suspend`; a synchronous `io.popen` fork or an LIPC write to powerd at that instant races with the system's sleep flow and freezes mid-suspend, forcing a hard reboot via the power button (exactly the two "locked while running, no exit record" crashes in crash.log). The frozen service uses no power; only after a stable unlock, outside the power-critical path, does the plugin recheck status and restore the watcher.
 - **震荡防抖（v1.1.1）**：若设备出现 suspend/resume 快速反复（日志中可见数秒内多次挂起/唤醒），插件用代际令牌让挂起前排队的「解锁重启」回调作废，只有**稳定解锁后**才恢复服务——震荡窗口内不再反复启停、反复 fork 进程，降低低内存设备锁屏卡顿的概率。
   **Oscillation debounce (v1.1.1):** if the device rapidly oscillates suspend/resume (visible as repeated suspend/wake within seconds in logs), a generation token invalidates the queued "restart on unlock" callbacks from before suspension, restoring the service only after a **stable unlock** — no repeated start/stop or process forking during the oscillation window, reducing lock-screen stutter on low-memory devices.
 
@@ -107,6 +107,8 @@ The plugin ships a small `fb_bridge.sh` bridge script that only: opens port 80, 
 
 ## 更新日志 / Changelog
 
+- **v1.1.4**：根治「服务运行中息屏导致的卡死、需按电源键硬重启」——crash.log 显示两次强制重启都发生在等待自动关闭期间息屏、且日志无任何退出记录；根因是 `onSuspend` 在 suspend 电源关键路径中同步 `io.popen` fork shell 并对 powerd 的 `preventScreenSaver` 做 LIPC 写，与系统息屏流程竞争而挂死。改为挂起时只改内存状态、零 fork / 零 LIPC，状态复查与看护恢复全部延迟到解锁后（电源路径之外）执行。另将无传输关闭提示精简为「长时间无数据传输，已关闭网页文件管理器」，去掉易误解的具体分钟数。
+  **v1.1.4:** fixed the "freeze when locking the screen while the service runs, requiring a hard reboot" — crash.log showed both forced reboots happened while locking during the auto-close wait, with no exit record at all. Root cause: `onSuspend` synchronously `io.popen`-forked a shell and did an LIPC write to powerd's `preventScreenSaver` inside the suspend power-critical path, racing with the system's sleep flow and hanging. It now only touches in-memory state on suspend — zero fork / zero LIPC — deferring status rechecks and watcher restoration until after unlock (outside the power path). The idle-close notice is also simplified to "Web File Browser closed after a period of inactivity", dropping the potentially misleading minute count.
 - **v1.1.3**：修复「正在传输却被判无传输、5 分钟误关」——v1.1.1 改用的进程 IO 对 Go HTTP 服务的 `sendfile` 零拷贝无效（下载/上传不经用户态 read/write），判定源改回内核层 **iptables 80 端口双向累计字节**：只统计访问本服务的流量（剔除其它程序联网），sendfile 同样计数；并新增出站 `spt:80`，使纯下载（出站流量）不再被漏判。两端（KOReader 快捷方式 + KUAL 包）判定源同步修复，一次 `iptables -L` 取双向、仅 1 次 fork。
   **v1.1.3:** fixed "real transfer misjudged as idle and closed after 5 min" — the process IO used since v1.1.1 is blind to Go's `sendfile` zero-copy (downloads/uploads bypass userspace read/write). Detection now uses **kernel-level iptables bidirectional byte counters on port 80**: only this service's traffic counts (other apps excluded), sendfile is counted, and an outbound `spt:80` counter was added so download-only traffic is no longer missed. Both sides (KOReader shortcut + KUAL package) fixed in sync; one `iptables -L` reads both directions, single fork.
 - **v1.1.2**：为关键事件（加载 / 启停 / 自动关闭 / 挂起恢复 / 网络恢复）增加结构化日志，统一 `kofb:` 前缀，可在 KOReader 的 `crash.log` 中 `grep kofb:` 快速定位插件行为；仅在离散事件记录，轮询热路径不打日志，不增加低内存设备负担。
@@ -128,4 +130,4 @@ The plugin ships a small `fb_bridge.sh` bridge script that only: opens port 80, 
 
 ---
 
-当前版本 / Current version: **1.1.3**。
+当前版本 / Current version: **1.1.4**。
