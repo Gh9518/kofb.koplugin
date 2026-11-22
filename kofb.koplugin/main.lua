@@ -1,5 +1,5 @@
 --[[--
-kofb.koplugin — 「网页文件管理器 2」的 KOReader 快捷方式（v1.1.3）
+kofb.koplugin — 「网页文件管理器 2」的 KOReader 快捷方式（v1.1.4）
 
 UI 文案按系统语言显示：系统为简体中文时显示中文，其它（含英文）显示英文。
 判定依据为 KOReader 启动时已加载的 locale（require("gettext").current_lang，
@@ -23,6 +23,11 @@ UI 文案按系统语言显示：系统为简体中文时显示中文，其它�
     iptables 80 端口规则计数：只统计访问本服务的包（剔除其它程序联网），且 sendfile 同样经过
     netfilter 如实计数；并双向统计 INPUT dpt:80（请求/上传）+ OUTPUT spt:80（下载响应），
     杜绝「纯下载是出站流量」被漏判。一次 iptables -L 取两链，仅 1 次 fork。
+  * v1.1.4 息屏卡死根治（本次）：crash.log 两次强制重启都发生在「服务运行中、等待自动关闭时息屏」，
+    且日志无任何退出记录（正常退出都有 Tearing down / lipc-wait-event exited normally）。根因是
+    onSuspend 在 suspend 电源关键路径里同步 io.popen fork shell + 对 powerd 的 preventScreenSaver
+    做 LIPC 写，与系统息屏竞争而挂死。改为 onSuspend 只改内存状态：零 fork、零 LIPC、零阻塞；
+    状态复查 / 常亮兜底 / 看护恢复全部推迟到 onResume（电源路径之外）异步执行。
   * IP 用 KOReader 自己的菜单右侧值 / 弹窗显示，天然避开帧缓冲冲突。
   * 桥接脚本只依赖 Kindle 系统接口与现有包里的 filebrowser 二进制 / filebrowser.db，
     不 source lib.sh、不调用 start.sh，因此 KUAL 插件包后续升级不会破坏本插件。
@@ -61,7 +66,7 @@ end
 local ok_tv, tv_module = pcall(require, "ui/widget/textviewer")
 local TextViewer = (ok_tv and type(tv_module) == "table") and tv_module or nil
 
-local PLUGIN_VERSION = "1.1.3"
+local PLUGIN_VERSION = "1.1.4"
 
 -- 依赖项目开源地址：KUAL 扩展包「网页文件管理器 2」（提供核心程序）
 local URL_KUAL_EXT = "https://github.com/Gh9518/kindle-filebrowser-optimized"
@@ -392,8 +397,8 @@ function KOFileBrowser:_watchdogTick(gen)
     -- 约 5 分钟无数据传输即关闭
     if self._wd_idle >= WD_IDLE_LIMIT then
         self._wd = false
-        self:_autoStop(T("No data transfer for 5 minutes — Web File Browser has been auto-closed.",
-                         "已 5 分钟无数据传输，网页文件管理器已自动关闭。"))
+        self:_autoStop(T("Web File Browser closed after a period of inactivity.",
+                         "长时间无数据传输，已关闭网页文件管理器"))
         return
     end
     UIManager:scheduleIn(WD_INTERVAL, function() self:_watchdogTick(gen) end)
@@ -503,33 +508,37 @@ function KOFileBrowser:onKOFBStart()   self:onFBStart()   end
 function KOFileBrowser:onKOFBStop()    self:onFBStop()    end
 function KOFileBrowser:onKOFBShowIP()  self:showInfo(nil) end
 
--- v1.0.9 锁屏卡死修复 + v1.1.0 常亮策略 + v1.1.1 震荡防抖：
---   1) 若服务在跑，挂起前立即完整关闭 —— 释放 filebrowser 占用的十几 MB 内存（PW4 全机仅 490MB），
---      并清掉 preventScreenSaver 常亮标记（stop 内兜底清 0），确保挂起路径上无任何东西顶住系统。
---   2) 停掉本插件的轮询看护 / 网络恢复监听 + 释放活动常亮：挂起窗口内不再有定时回调 fork 子进程；
---      残留的旧回调因代际/标志失效，下一轮自检后直接退出。
---   3) 对 KUAL 入口启动的服务同样生效：stop 会按命令行匹配杀掉 filebrowser 并清掉 idle.sh 守护。
---   4) v1.1.1：用 _resume_gen 代际令牌标记本次挂起。crash 日志可见 suspend/resume 在数秒内反复
---      震荡；若每次 resume 都无条件 spawn("start")，会在震荡窗口内反复 fork 拉起服务、加剧卡顿。
---      故挂起时自增代际，使挂起前排队的恢复回调自动作废。
+-- v1.1.4 息屏卡死根因修复 —— 本次核心：
+-- crash.log 铁证：两次强制重启都发生在「服务运行中、等待自动关闭、用户息屏」时，且日志结尾
+-- 没有 Tearing down / lipc-wait-event exited normally（正常退出/重启都有），即卡在 suspend
+-- 电源关键路径、被迫按电源键硬重启；而 12:33:26 那次 onSuspend service was off、未走 stop
+-- 分支，就正常 suspend 并在 16:34 恢复 —— 唯一变量就是「服务在跑时 onSuspend 做了什么」。
+-- 根因：Suspend 事件由 broadcastEvent 同步调用各 widget 的 onSuspend（随后系统立刻进入
+-- suspend）。旧版在服务运行时于这条关键路径里：
+--   ① capture("status") / capture("stop") —— 两次同步 io.popen fork sh 子进程；
+--   ② stop 内 lipc-set-prop com.lab126.powerd preventScreenSaver 0 —— 在 powerd 正主导息屏时
+--      写它的屏幕保护属性，与其状态机竞争；
+--   ③ _clearAwake() 再 spawn("sleep") —— 又一次 LIPC 写。
+-- 在进程即将被内核冻结的时刻同步 fork 并等子进程，子进程可能永远得不到调度，UI 线程卡死在
+-- io.popen 的 read，系统停在 suspend 中途 → 只能电源键硬重启。
+-- 修复：onSuspend 只做纯内存状态操作 —— 零 fork、零 LIPC、零阻塞；服务状态复查、常亮兜底释放、
+-- 看护恢复全部推迟到 onResume 之后（已离开电源关键路径）异步执行。suspend 期间不主动停服务：
+-- 系统冻结后进程不耗电，resume 后原样恢复，反而避免了反复启停 fork 本身带来的卡顿。
 function KOFileBrowser:onSuspend()
+    -- 仅内存操作，绝不调用 capture()/spawn()/lipc。
     self._resume_gen = (self._resume_gen or 0) + 1
-    local was_on = (capture("status") == "on")
-    klog("onSuspend: service was", was_on and "on -> stopping" or "off",
-         ", gen =", self._resume_gen)
-    if was_on then
-        capture("stop")
-        self._resume_restart = true
-    end
-    self:_clearAwake()
+    -- 保守置位：resume 后复查 status 再决定，避免在此 fork 查询。
+    self._resume_restart = true
     self._wd = false
     self._net_watch = false
+    self._screen_awake = false
+    self._awake_idle = 0
+    klog("onSuspend: memory-only, no shell/powerd, gen =", self._resume_gen)
 end
 
--- 解锁 / 恢复后：若锁屏前服务在运行，延迟一大段时间再决定是否重新拉起。
--- 防抖逻辑（v1.1.1）：suspend/resume 震荡时每次 pause 都会自增 _resume_gen，之前排队的恢复回调
--- 因代际不符而作废；只有设备真正稳定解锁（这段时间没有再次挂起）才会启动服务，避免震荡期间
--- 反复启停。start 失败（离线缺核心）无弹窗打扰，菜单右侧状态实时可见。
+-- 解锁 / 恢复后：延迟到电源关键路径之外，再复查状态、恢复看护、兜底清常亮。
+-- 防抖逻辑（v1.1.1 沿用）：suspend/resume 震荡时每次挂起都会自增 _resume_gen，之前排队的回调
+-- 因代际不符而作废；只有设备稳定解锁（这段延迟内未再次挂起）才执行，避免震荡期反复 fork。
 function KOFileBrowser:onResume()
     if not self._resume_restart then
         klog("onResume: no pending restart, skip")
@@ -537,24 +546,24 @@ function KOFileBrowser:onResume()
     end
     self._resume_restart = false
     local gen = self._resume_gen or 0
-    klog("onResume: restart queued, gen =", gen)
-    -- 延迟约 15 秒：覆盖 crash 日志里 2~6 秒的震荡周期；若期间再次挂起则本回调作废。
+    klog("onResume: deferred check queued, gen =", gen)
+    -- 延迟约 15 秒：覆盖 crash 日志里 2~6 秒的 suspend/resume 震荡周期；期间再次挂起则本回调作废。
     UIManager:scheduleIn(WD_INTERVAL + 5, function()
         if gen ~= self._resume_gen then
-            klog("onResume: deferred restart cancelled (generation changed, oscillation)")
+            klog("onResume: deferred check cancelled (generation changed, oscillation)")
             return
         end
-        if capture("status") == "on" then
-            klog("onResume: skip, service already on")
+        -- 此处已远离电源关键路径，fork / LIPC 都安全：兜底释放可能残留的常亮标记。
+        spawn("sleep")
+        self._screen_awake = false
+        self._awake_idle = 0
+        local st = capture("status")
+        if st ~= "on" then
+            klog("onResume: service off, no watchdog")
             return
         end
-        klog("onResume: stable unlock, restarting service")
-        spawn("start")
-        -- 桥接脚本最长约 8 秒才就绪，延迟挂上看护，避免首轮误判「未启动」而提前退出
-        UIManager:scheduleIn(WD_INTERVAL + 4, function()
-            if gen ~= self._resume_gen then return end
-            if capture("status") == "on" then self:_startWatchdog() end
-        end)
+        klog("onResume: service on, restore watchdog")
+        self:_startWatchdog()
     end)
 end
 
