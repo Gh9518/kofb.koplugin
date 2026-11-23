@@ -250,19 +250,12 @@ quiet)
     echo quieted
     ;;
 
-# 【v1.1.0 活动感知常亮】只在「确实有数据传输」期间短暂保持唤醒以保传输，
-# 空闲约 1 分钟后由上层释放。替代旧版「启动即常亮、直到关闭」的粗暴做法。
-wake)
-    lipc-set-prop -i com.lab126.powerd preventScreenSaver 1 2>/dev/null
-    echo awake
-    ;;
-sleep)
-    lipc-set-prop -i com.lab126.powerd preventScreenSaver 0 2>/dev/null
-    echo asleep
-    ;;
-
+# v1.1.6：移除 wake/sleep 活动常亮子命令。写 preventScreenSaver 1 顶住挂起会引发
+# suspend/resume 震荡与「锁屏后解锁不了」。屏幕唤醒/息屏完全交给 KOReader 与系统；
+# 仅在 stop 分支保留一次 preventScreenSaver 0 兜底（见上，兼容 KUAL 混合启动），
+# 那是「释放」而非「置位」，不会顶住挂起。
 *)
-    echo "usage: fb_bridge.sh start|stop|status|ip|dir|bytes|probe|quiet|wake|sleep"
+    echo "usage: fb_bridge.sh start|stop|status|ip|dir|bytes|probe|probe_file|quiet"
     exit 1
     ;;
 esac
